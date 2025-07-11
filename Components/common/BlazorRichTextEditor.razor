@@ -1,0 +1,491 @@
+﻿@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@using System.Text.RegularExpressions
+@inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<style>
+    .editor-container {
+        font-family: 'Segoe UI', 'Calibri', sans-serif;
+        font-size: 14px;
+        width: 100%; /* Ensure full width of parent */
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+    }
+
+    .toolbar {
+        background-color: #ffffff;
+        padding: 10px;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: flex-start; /* Ensure top alignment of buttons */
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .toolbar-button {
+        background: none;
+        border: none;
+        padding: 8px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background-color 0.2s, transform 0.1s;
+        width: 36px; /* Fixed width for uniform button size */
+        height: 36px; /* Fixed height for uniform button size */
+        display: flex;
+        align-items: center;
+        justify-content: center; /* Center the image within the button */
+    }
+
+        .toolbar-button:hover {
+            background-color: #f0f0f0;
+        }
+
+        .toolbar-button:active {
+            background-color: #e0e0e0;
+            transform: scale(0.95);
+        }
+
+        .toolbar-button img {
+            width: 20px; /* Fixed image size */
+            height: 20px;
+            object-fit: contain; /* Ensure images scale uniformly without distortion */
+            display: block;
+        }
+
+    .toolbar-select {
+        padding: 6px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 14px;
+        background-color: #fff;
+        cursor: pointer;
+        transition: border-color 0.2s;
+        height: 36px; /* Match button height for vertical alignment */
+        box-sizing: border-box; /* Ensure padding doesn't affect height */
+    }
+
+        .toolbar-select:hover {
+            border-color: #888;
+        }
+
+        .toolbar-select:focus {
+            outline: none;
+            border-color: #0078d4;
+        }
+
+    .editor {
+        border: 1px solid #e0e0e0;
+        min-height: @Height;
+        padding: 15px;
+        background-color: #fff;
+        color: #333;
+        font-family: 'Segoe UI', 'Calibri', sans-serif;
+        font-size: 14px;
+        line-height: 1.6;
+        resize: vertical;
+        overflow-y: auto;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+        .editor:focus {
+            outline: none;
+            border-color: #0078d4;
+            box-shadow: 0 0 0 1px #0078d4 inset;
+        }
+</style>
+
+<div class="editor-container">
+    <div class="toolbar">
+        <button type="button" @onclick:preventDefault="true" @onclick="FormatTextBold" title="Bold" class="toolbar-button">
+            <img src="/images/bold-icon.png" alt="Bold" />
+        </button>
+        <button type="button" @onclick:preventDefault="true" @onclick="FormatTextItalic" title="Italic" class="toolbar-button">
+            <img src="/images/italic-icon.png" alt="Italic" />
+        </button>
+        <button type="button" @onclick:preventDefault="true" @onclick="FormatTextUnderline" title="Underline" class="toolbar-button">
+            <img src="/images/underline-icon.png" alt="Underline" />
+        </button>
+        <button type="button" @onclick:preventDefault="true" @onclick="FormatTextStrikethrough" title="Strikethrough" class="toolbar-button">
+            <img src="/images/strikethrough-icon.png" alt="Strikethrough" />
+        </button>
+        <select @onchange="FormatBlock" title="Format" class="toolbar-select">
+            <option value="p">Normal</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+        </select>
+        <select @onchange="ChangeFontSize" title="Font Size" class="toolbar-select">
+            <option value="8pt">8pt</option>
+            <option value="9pt">9pt</option>
+            <option value="10pt">10pt</option>
+            <option value="11pt" selected>11pt</option>
+            <option value="12pt">12pt</option>
+            <option value="14pt">14pt</option>
+            <option value="18pt">18pt</option>
+            <option value="24pt">24pt</option>
+            <option value="36pt">36pt</option>
+        </select>
+    </div>
+    <div class="editor"
+         @ref="editorRef"
+         contenteditable="true"
+         style="min-height: @Height; width: 100%;">
+    </div>
+</div>
+@code {
+    [Parameter]
+    public string Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public string EntityId { get; set; } = Guid.NewGuid().ToString();
+
+    [Parameter]
+    public string ProjectId { get; set; } = Guid.NewGuid().ToString();
+
+    [Parameter]
+    public string EntityType { get; set; } = "defaultType";
+
+    [Parameter]
+    public string FieldName { get; set; } = "defaultName";
+
+    [Parameter]
+    public string Height { get; set; } = "400px";
+
+    private ElementReference editorRef;
+    private bool isUpdatingContent = false;
+    private DotNetObjectReference<BlazorRichTextEditor> dotNetRef;
+    private HttpClient _httpClient;
+    private List<string> currentImageUrls = new List<string>(); // Track image URLs
+
+    [Parameter]
+    public string TenantId { get; set; } = "550b06f47d284910ba3c27150e52aa18"; // Set via parent component or configuration
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        _httpClient = HttpClientFactory.CreateClient("EffortlessQAApi");
+        Console.WriteLine($"HttpClient BaseAddress: {_httpClient.BaseAddress?.ToString() ?? "Not set"}");
+        await InitializeDotNetRef();
+        await LoadInitialImages();
+    }
+
+    private async Task LoadInitialImages()
+    {
+        if (!string.IsNullOrEmpty(Value))
+        {
+            currentImageUrls = ExtractImageUrls(Value);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            string initialContent = Value ?? "";
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("initializeEditor", editorRef, initialContent, dotNetRef);
+            }
+            catch (JSException ex)
+            {
+                Console.WriteLine($"Error initializing editor: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task InitializeDotNetRef()
+    {
+        dotNetRef?.Dispose();
+        dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    private async Task FormatTextBold()
+    {
+        await ExecuteCommand("bold");
+    }
+
+    private async Task FormatTextItalic()
+    {
+        await ExecuteCommand("italic");
+    }
+
+    private async Task FormatTextUnderline()
+    {
+        await ExecuteCommand("underline");
+    }
+
+    private async Task FormatTextStrikethrough()
+    {
+        await ExecuteCommand("strikethrough");
+    }
+
+    private async Task FormatBlock(ChangeEventArgs e)
+    {
+        var format = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(format))
+        {
+            await ExecuteCommand("formatBlock", false, format);
+        }
+    }
+
+    private async Task ChangeFontSize(ChangeEventArgs e)
+    {
+        var size = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(size))
+        {
+            await ExecuteCommand("fontSize", false, size);
+        }
+    }
+
+    private async Task ExecuteCommand(string command, bool showUI = false, string? value = null)
+    {
+        try
+        {
+            await SaveCursorPosition();
+            await JSRuntime.InvokeVoidAsync("execCommand", command, showUI, value);
+            await RestoreCursorPosition();
+            await UpdateContent();
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Error executing command {command}: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandlePasteImage(byte[] blob, string fileType, string fileName)
+    {
+        try
+        {
+            if (fileType.StartsWith("image/"))
+            {
+                var formData = new MultipartFormDataContent();
+                formData.Add(new ByteArrayContent(blob), "file", fileName);
+                var response = await _httpClient.PostAsync($"common/images/upload?entityId={Uri.EscapeDataString(EntityId)}&fieldName={Uri.EscapeDataString(FieldName)}&ProjectId={Uri.EscapeDataString(ProjectId)}&EntityType={Uri.EscapeDataString(EntityType)}", formData);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    return;
+                }
+                var json = await response.Content.ReadAsStringAsync();
+                var result = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                if (result != null && result.TryGetValue("location", out var location) && !string.IsNullOrEmpty(location))
+                {
+                    Console.WriteLine($"Image uploaded successfully: {location}");
+                    await JSRuntime.InvokeVoidAsync("focusEditor", editorRef);
+                    await JSRuntime.InvokeVoidAsync("insertImage", editorRef, $"<img src='{location}' style='max-width: 100%; height: auto;' alt='Dropped or pasted image' />");
+                    await RestoreCursorPosition();
+                    await UpdateContent();
+                }
+                else
+                {
+                    Console.WriteLine($"Invalid JSON response or missing 'location': {json}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error handling dropped or pasted image: {ex.Message}");
+        }
+    }
+
+
+    [JSInvokable]
+    public async Task HandleImageDeletion(string deletedImageUrl)
+    {
+        try
+        {
+            Console.WriteLine($"Handling deletion of image: {deletedImageUrl}");
+
+            // Extract blob name (file name only) for comparison
+            var deletedBlobName = ExtractBlobName(deletedImageUrl);
+            var matchingImageUrl = currentImageUrls.FirstOrDefault(url => ExtractBlobName(url) == deletedBlobName);
+
+            if (matchingImageUrl != null)
+            {
+                var formData = new MultipartFormDataContent();
+                formData.Add(new StringContent(deletedImageUrl), "imageUrl");
+                formData.Add(new StringContent(TenantId), "tenantId");
+                formData.Add(new StringContent(EntityId), "entityId");
+                formData.Add(new StringContent(FieldName), "fieldName");
+                formData.Add(new StringContent(ProjectId), "ProjectId");
+                formData.Add(new StringContent(EntityType), "EntityType");
+
+                var requestUrl = $"common/images/delete";
+                Console.WriteLine($"Deletion request: {requestUrl}, ImageUrl: {deletedImageUrl}, TenantId: {TenantId}, EntityId: {EntityId}, FieldName: {FieldName}, ProjectId: {ProjectId}, EntityType: {EntityType}");
+
+                var response = await _httpClient.PostAsync(requestUrl, formData);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"Failed to delete image: Status={response.StatusCode}, Error={errorContent}");
+                    await ShowError($"Failed to delete image: {errorContent}");
+                }
+                else
+                {
+                    Console.WriteLine($"Image deleted successfully: {deletedImageUrl}");
+                    currentImageUrls.Remove(matchingImageUrl);
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Image not found in currentImageUrls: {deletedBlobName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting image: {ex.Message}");
+            await ShowError($"Error deleting image: {ex.Message}");
+        }
+    }
+
+    private string ExtractBlobName(string url)
+    {
+        try
+        {
+            var uri = new Uri(url);
+            var path = uri.AbsolutePath.TrimStart('/');
+            var parts = path.Split('/');
+            if (parts.Length > 0)
+            {
+                return parts[^1]; // e.g., "843347e7-7340-4fcb-bde3-bdec07359e74_image.png"
+            }
+            Console.WriteLine($"Invalid URL format: {url}");
+            return url;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error extracting blob name from {url}: {ex.Message}");
+            return url;
+        }
+    }
+
+    private List<string> ExtractImageUrls(string content)
+    {
+        var imageUrls = new List<string>();
+        if (string.IsNullOrEmpty(content))
+            return imageUrls;
+
+        var regex = new Regex(@"src=""(https://[^\s""]+?)""", RegexOptions.IgnoreCase);
+        var matches = regex.Matches(content);
+        foreach (Match match in matches)
+        {
+            if (match.Groups.Count > 1)
+            {
+                imageUrls.Add(match.Groups[1].Value);
+            }
+        }
+        return imageUrls;
+    }
+
+    [JSInvokable]
+    public async Task UpdateValue(string newContent)
+    {
+        try
+        {
+            if (!isUpdatingContent)
+            {
+                isUpdatingContent = true;
+                if (!string.IsNullOrWhiteSpace(newContent) && !newContent.StartsWith("<"))
+                {
+                    newContent = $"<p>{newContent}</p>";
+                }
+                if (newContent != Value)
+                {
+                    Value = newContent;
+                    await ValueChanged.InvokeAsync(Value);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating content: {ex.Message}");
+        }
+        finally
+        {
+            isUpdatingContent = false;
+        }
+    }
+
+    private async Task UpdateContent()
+    {
+        try
+        {
+            isUpdatingContent = true;
+            var newContent = await JSRuntime.InvokeAsync<string>("getEditorContent", editorRef);
+            Console.WriteLine($"Editor content after update: {newContent}");
+            if (!string.IsNullOrWhiteSpace(newContent) && !newContent.StartsWith("<"))
+            {
+                newContent = $"<p>{newContent}</p>";
+            }
+            if (newContent != Value)
+            {
+                Value = newContent;
+                await ValueChanged.InvokeAsync(Value);
+            }
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Error updating content: {ex.Message}");
+        }
+        finally
+        {
+            isUpdatingContent = false;
+        }
+    }
+
+    private async Task SaveCursorPosition()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("saveCursorPosition", editorRef);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Error saving cursor position: {ex.Message}");
+        }
+    }
+
+    private async Task RestoreCursorPosition()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("restoreCursorPosition", editorRef);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Error restoring cursor position: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task ShowError(string message)
+    {
+        await JSRuntime.InvokeVoidAsync("showEditorError", editorRef, message);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("destroyEditor", editorRef);
+            if (dotNetRef != null)
+            {
+                dotNetRef.Dispose();
+                dotNetRef = null;
+            }
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Error disposing editor: {ex.Message}");
+        }
+    }
+}

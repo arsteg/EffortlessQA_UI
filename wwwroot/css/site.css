@@ -1,0 +1,64 @@
+/* Reset Bootstrap conflicts */
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+}
+
+/* Layout styles */
+.mud-drawer {
+    transition: transform 0.3s ease-in-out;
+}
+
+.mud-drawer-open {
+    transform: translateX(0);
+}
+
+.mud-appbar {
+    z-index: 1000; /* Ensure app bar is above drawer */
+}
+
+/* Editor styles (for RichTextEditor compatibility) */
+/*.editor-container {
+    max-width: 800px;
+    margin: 20px auto;
+}*/
+
+/*.editor {
+    border: 1px solid #e0e0e0;
+    min-height: 200px;
+    padding: 16px;
+    background-color: #ffffff;
+    border-radius: 4px;
+    outline: none;
+    font-size: 16px;
+}*/
+
+/* Toolbar button spacing */
+.mud-toolbar .mud-button {
+    margin-right: 8px;
+}
+
+/* Fix icon sizes */
+.mud-icon-button .mud-icon {
+    font-size: 1.25rem !important; /* Smaller icons for buttons */
+}
+
+.mud-nav-link .mud-icon {
+    font-size: 1.25rem !important; /* Smaller icons for nav links */
+}
+
+.mud-menu .mud-icon {
+    font-size: 1.25rem !important; /* Smaller icons for menus */
+}
+
+/* Responsive adjustments */
+@media (max-width: 960px) {
+    .mud-drawer {
+        width: 200px !important;
+    }
+
+    .mud-main-content {
+        padding-top: 56px !important; /* Adjust for app bar height */
+    }
+}

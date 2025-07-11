@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36221.1 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EffortlessQA.UI", "EffortlessQA.UI.csproj", "{1B974403-BF0A-C985-B3DA-4FF8669204BE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1B974403-BF0A-C985-B3DA-4FF8669204BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B974403-BF0A-C985-B3DA-4FF8669204BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B974403-BF0A-C985-B3DA-4FF8669204BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B974403-BF0A-C985-B3DA-4FF8669204BE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4661A3B9-B7E2-41D6-93D3-C2963AC92483}
+	EndGlobalSection
+EndGlobal
