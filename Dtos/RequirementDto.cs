@@ -1,5 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using EffortlessQA.Data.Entities;
+using EffortlessQA.UI.Components;
 
 namespace EffortlessQA.Data.Dtos
 {
@@ -60,5 +62,17 @@ namespace EffortlessQA.Data.Dtos
     public class LinkTestCaseDto
     {
         public Guid TestCaseId { get; set; }
+    }
+
+    public class RequirementTestCase
+    {
+        public Guid RequirementId { get; set; }
+
+        public RequirementDto Requirement { get; set; }
+
+        public Guid TestCaseId { get; set; }
+
+        public TestCaseDto TestCase { get; set; }
+        public int? Weight { get; set; } // Optional for future prioritization
     }
 }
