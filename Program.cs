@@ -37,7 +37,8 @@ builder
         "EffortlessQAApi",
         client =>
         {
-            client.BaseAddress = new Uri("https://localhost:7196/api/v1/");
+            //client.BaseAddress = new Uri("https://localhost:7196/api/v1/");
+            client.BaseAddress = new Uri("https://effortlessqaapi.azurewebsites.net/api/v1/");
             client.DefaultRequestHeaders.Accept.Add(
                 new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json")
             );
